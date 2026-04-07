@@ -487,17 +487,102 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  function parseSrtTimeToSeconds(value: string): number {
+    const match = value.trim().match(
+      /^(?:(\d{2}):)?(\d{2}):(\d{2})[,.](\d{3})$/
+    );
+
+    if (!match) return 0;
+
+    const hours = Number(match[1] ?? 0);
+    const minutes = Number(match[2] ?? 0);
+    const seconds = Number(match[3] ?? 0);
+    const millis = Number(match[4] ?? 0);
+
+    return round3(hours * 3600 + minutes * 60 + seconds + millis / 1000);
+  }
+
+  function parseSrtToLyrics(srtText: string): LyricLine[] {
+    const normalized = srtText.replace(/\r\n/g, "\n").trim();
+    if (!normalized) return [];
+
+    const blocks = normalized.split(/\n{2,}/);
+    const parsed: LyricLine[] = [];
+
+    for (const block of blocks) {
+      const lines = block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+      if (lines.length < 2) continue;
+
+      let timeLineIndex = 0;
+
+      if (!lines[0].includes("-->")) {
+        timeLineIndex = 1;
+      }
+
+      const timeLine = lines[timeLineIndex];
+      if (!timeLine || !timeLine.includes("-->")) continue;
+
+      const [startRaw] = timeLine.split("-->").map((s) => s.trim());
+      const start = parseSrtTimeToSeconds(startRaw);
+
+      const textLines = lines.slice(timeLineIndex + 1);
+      const text = textLines.join("\n").trim();
+
+      if (!text) continue;
+
+      parsed.push({
+        t: start,
+        ts: formatProjectTs(start),
+        text,
+      });
+    }
+
+    return parsed.sort((a, b) => a.t - b.t);
+  }
+
+  function loadSrtFile(file: File) {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        setError("");
+
+        const text = String(reader.result || "");
+        const parsed = parseSrtToLyrics(text);
+
+        if (!parsed.length) {
+          throw new Error("No valid subtitle entries found in SRT file.");
+        }
+
+        setLyrics(parsed);
+        setSelectedIndex(0);
+        setManualSelectionLock(false);
+        lyricRefs.current = [];
+
+        const convertedJson = JSON.stringify({ lyrics: parsed }, null, 2);
+        setJsonText(convertedJson);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not import SRT file");
+      }
+    };
+
+    reader.readAsText(file);
+  }
+
   return (
     <div className="app">
       <header className="topbar">
         <h1>Lyric Sync Tool</h1>
-        <p>MP3 + JSON lyric timing editor</p>
       </header>
 
       <section className="panel">
         <div className="row">
           <div>
-            <label className="label">Load MP3</label>
+            <label className="label">Load MP3/Audio</label>
             <input
               type="file"
               accept="audio/mpeg,audio/mp3,audio/*"
@@ -516,6 +601,18 @@ export default function App() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) loadJsonFile(file);
+              }}
+            />
+          </div>
+
+          <div>
+            <label className="label">Load SRT</label>
+            <input
+              type="file"
+              accept=".srt,text/plain"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) loadSrtFile(file);
               }}
             />
           </div>
