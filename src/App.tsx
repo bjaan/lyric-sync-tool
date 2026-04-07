@@ -68,7 +68,6 @@ export default function App() {
 
   const [txtStartTime, setTxtStartTime] = useState("0.00");
   const [txtStepTime, setTxtStepTime] = useState("4.00");
-
   const [srtDelay, setSrtDelay] = useState("0");
 
   useEffect(() => {
@@ -139,58 +138,118 @@ export default function App() {
   }, [selectedIndex]);
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      const isTyping = tag === "textarea" || tag === "input";
+    const pressed = new Set<string>();
+    let repeatInterval: number | null = null;
+    let repeatTimeout: number | null = null;
 
-      if (isTyping) return;
+    const isTypingTarget = (target: EventTarget | null) => {
+      const tag = (target as HTMLElement | null)?.tagName?.toLowerCase();
+      return tag === "textarea" || tag === "input";
+    };
+
+    const stopRepeat = () => {
+      if (repeatTimeout !== null) {
+        window.clearTimeout(repeatTimeout);
+        repeatTimeout = null;
+      }
+      if (repeatInterval !== null) {
+        window.clearInterval(repeatInterval);
+        repeatInterval = null;
+      }
+    };
+
+    const runHeldNudges = () => {
+      if (pressed.has("[")) nudgeSelected(-0.01);
+      if (pressed.has("]")) nudgeSelected(0.01);
+      if (pressed.has("{")) nudgeSelected(-0.05);
+      if (pressed.has("}")) nudgeSelected(0.05);
+    };
+
+    const startRepeat = () => {
+      if (repeatTimeout !== null || repeatInterval !== null) return;
+
+      repeatTimeout = window.setTimeout(() => {
+        runHeldNudges();
+        repeatInterval = window.setInterval(() => {
+          runHeldNudges();
+        }, 40);
+      }, 200);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
 
       if (e.code === "Space") {
         e.preventDefault();
-        togglePlay();
+        if (!e.repeat) {
+          togglePlay();
+        }
+        return;
       }
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setManualSelectionLock(true);
-        setSelectedIndex((prev) => Math.min(prev + 1, lyrics.length - 1));
+        if (!e.repeat) {
+          setManualSelectionLock(true);
+          setSelectedIndex((prev) => Math.min(prev + 1, lyrics.length - 1));
+        }
+        return;
       }
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setManualSelectionLock(true);
-        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        if (!e.repeat) {
+          setManualSelectionLock(true);
+          setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        }
+        return;
       }
 
       if (e.key === "Enter") {
         e.preventDefault();
-        syncSelectedToCurrentTime();
+        if (!e.repeat) {
+          syncSelectedToCurrentTime();
+        }
+        return;
       }
 
-      if (e.key === "[") {
+      if (["[", "]", "{", "}"].includes(e.key)) {
         e.preventDefault();
-        nudgeSelected(-0.01);
-      }
 
-      if (e.key === "]") {
-        e.preventDefault();
-        nudgeSelected(0.01);
-      }
+        if (!pressed.has(e.key)) {
+          pressed.add(e.key);
+          runHeldNudges();
+        }
 
-      if (e.key === "{") {
-        e.preventDefault();
-        nudgeSelected(-0.05);
-      }
-
-      if (e.key === "}") {
-        e.preventDefault();
-        nudgeSelected(0.05);
+        startRepeat();
       }
     };
 
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (["[", "]", "{", "}"].includes(e.key)) {
+        pressed.delete(e.key);
+        if (pressed.size === 0) {
+          stopRepeat();
+        }
+      }
+    };
+
+    const onWindowBlur = () => {
+      pressed.clear();
+      stopRepeat();
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lyrics.length, selectedIndex, isReady]);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onWindowBlur);
+
+    return () => {
+      stopRepeat();
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+  }, [lyrics.length, selectedIndex, isReady, isPlaying, currentTime, duration]);
 
   const selectedLine = lyrics[selectedIndex];
 
@@ -297,7 +356,8 @@ export default function App() {
     if (!waveSurferRef.current) return;
 
     const ws = waveSurferRef.current;
-    const clamped = Math.max(0, Math.min(seconds, duration || seconds));
+    const maxDuration = duration > 0 ? duration : seconds;
+    const clamped = Math.max(0, Math.min(seconds, maxDuration));
 
     if (typeof (ws as any).setTime === "function") {
       (ws as any).setTime(clamped);
@@ -874,7 +934,8 @@ export default function App() {
       <footer className="footer">
         <p>
           Shortcuts: Space = play/pause, Enter = set selected line to current
-          time, ↑/↓ = select line, [ and ] = ±0.01s, {"{"} and {"}"} = ±0.05s.
+          time, ↑/↓ = select line, hold [ or ] for ±0.01s, hold {"{"} or {"}"} for
+          ±0.05s.
         </p>
       </footer>
     </div>
