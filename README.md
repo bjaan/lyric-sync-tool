@@ -9,13 +9,11 @@ Built with Vite, React, and WaveSurfer.js, designed for fast manual timing with 
 ## ✨ Features
 
 - 🎧 Load MP3/WAVE audio with waveform visualization
-- 📝 Import lyrics from JSON or plain text
+- 📝 Import lyrics from .SRT files, or plain text
 - ⚡ Real-time lyric syncing (press Enter to stamp)
 - 🎯 Fine timing control (±0.01 / ±0.05 / ±0.10 seconds)
 - 🔁 Auto-follow playback (optional manual lock)
 - ➕ Add and edit lyric lines
-- ➕ Import .SRT files
-- ➕ Import .TXT files as timed lines, auto-skip empty lines
 - 📄 Import from & Export to JSON (custom format)
 - 🎬 Export to SRT (subtitle format)
   - delay/offset control
